@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Trafik ve Güvenli Sürüş Eğitimi</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Fredoka', sans-serif;
+            margin: 0;
+            overflow: hidden;
+            background: #0f172a;
+            user-select: none;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(14px);
+            border: 2px solid rgba(56, 189, 248, 0.4);
+        }
+        .pulse-glow {
+            animation: pulseGlow 2s infinite;
+        }
+        @keyframes pulseGlow {
+            0% { transform: scale(1); box-shadow: 0 0 15px rgba(56, 189, 248, 0.5); }
+            50% { transform: scale(1.03); box-shadow: 0 0 30px rgba(56, 189, 248, 0.8); }
+            100% { transform: scale(1); box-shadow: 0 0 15px rgba(56, 189, 248, 0.5); }
+        }
+        .slide-down {
+            animation: slideDown 0.5s ease-out forwards;
+        }
+        @keyframes slideDown {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen">
+
+    <div id="hud" class="absolute top-0 left-0 w-full p-4 flex justify-between items-center pointer-events-none z-10">
+        <!-- Left Panel: Stats -->
+        <div class="glass-panel px-6 py-4 rounded-3xl shadow-2xl flex items-center gap-6 text-white">
+            <div>
+                <span class="text-xs uppercase font-bold text-sky-400 block">Puan / Skor</span>
+                <span id="scoreVal" class="text-4xl font-extrabold text-yellow-400">0</span>
+            </div>
+            <div class="border-l-2 border-slate-700 pl-6">
+                <span class="text-xs uppercase font-bold text-emerald-400 block">Hız</span>
+                <span id="speedVal" class="text-3xl font-extrabold text-white">0</span> <span class="text-sm font-bold text-sky-300">km/s</span>
+            </div>
+            <div class="border-l-2 border-slate-700 pl-6">
+                <span class="text-xs uppercase font-bold text-rose-400 block">Can / Sağlık</span>
+                <div id="healthBars" class="flex gap-1 mt-1">
+                    <span class="w-5 h-5 bg-rose-500 rounded-full inline-block shadow"></span>
+                    <span class="w-5 h-5 bg-rose-500 rounded-full inline-block shadow"></span>
+                    <span class="w-5 h-5 bg-rose-500 rounded-full inline-block shadow"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel: Traffic Rule Tip & Sound Toggle -->
+        <div class="flex items-center gap-4 pointer-events-auto">
+            <div class="glass-panel px-6 py-3 rounded-3xl shadow-2xl max-w-xs text-white hidden md:block">
+                <span class="text-xs uppercase font-bold text-amber-400 block">💡 Trafik Kuralı İpucu</span>
+                <p id="tipText" class="text-xs font-medium text-slate-200 mt-1">Kırmızı ışıkta mutlaka dur! Yeşil ışıkta güvenle geç.</p>
+            </div>
+            <button id="soundToggleBtn" class="glass-panel p-4 rounded-full text-white text-xl hover:bg-sky-500/30 transition shadow-lg cursor-pointer">🔊</button>
+            <button id="pauseBtn" class="glass-panel p-4 rounded-full text-white text-xl hover:bg-sky-500/30 transition shadow-lg cursor-pointer">⏸️</button>
+        </div>
+    </div>
+
+    <div id="warningBanner" class="absolute top-28 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-rose-600 to-amber-600 text-white px-8 py-3 rounded-full font-bold text-lg shadow-2xl transition-all duration-300 opacity-0 pointer-events-none z-20 flex items-center gap-3">
+        <span class="text-3xl">⚠️</span> <span id="warningMsg">Dikkat! Kırmızı Işıkta Geçtiniz!</span>
+    </div>
+
+    <!-- Educational Quiz Modal -->
+    <div id="quizModal" class="absolute inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-40 hidden">
+        <div class="glass-panel p-8 rounded-3xl max-w-lg w-full text-center border-4 border-sky-400 text-white slide-down shadow-2xl">
+            <div class="w-16 h-16 bg-sky-500/20 text-sky-400 rounded-full flex items-center justify-center text-3xl mx-auto mb-4">🚦</div>
+            <h2 class="text-2xl font-extrabold mb-2 text-sky-300">Trafik Güvenliği Soru Kartı</h2>
+            <p id="quizQuestion" class="text-lg font-semibold mb-6 text-slate-100">Karşıdan karşıya geçerken ilk önce hangi yöne bakmalıyız?</p>
+            <div id="quizOptions" class="grid grid-cols-1 gap-3"></div>
+        </div>
+    </div>
+
+    <!-- Start / Game Over / Pause Menu Overlay -->
+    <div id="menuOverlay" class="absolute inset-0 bg-slate-950/80 backdrop-blur-lg flex items-center justify-center z-50">
+        <div class="glass-panel p-10 rounded-3xl shadow-2xl max-w-lg w-full text-center border-4 border-sky-400 text-white">
+            <div class="w-24 h-24 bg-gradient-to-tr from-sky-500 to-indigo-600 rounded-3xl flex items-center justify-center text-5xl mx-auto mb-6 shadow-xl transform rotate-3 pulse-glow">🚗</div>
+            <h1 id="menuTitle" class="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-sky-400 to-emerald-400 mb-3">Trafik Canavarı Değil, Güvenli Sürücü</h1>
+            <p id="menuDesc" class="text-slate-300 mb-6 text-sm leading-relaxed font-medium">Binalar, taşlar, yayalar ve çalışan trafik ışıkları arasında güvenle sür! Yıldızları topla, kırmızı ışıkta durup yeşil ışıkta geçerek puanları kap.</p>
+            
+            <!-- Car Customization Color Picker -->
+            <div class="mb-6 bg-slate-900/60 p-4 rounded-2xl border border-slate-700">
+                <span class="text-xs uppercase font-bold text-sky-400 block mb-2">Spor Araba Rengini Seç</span>
+                <div class="flex justify-center gap-4">
+                    <button class="color-btn w-10 h-10 rounded-full bg-rose-500 ring-4 ring-white/50 cursor-pointer transition transform hover:scale-110" data-color="0xef4444"></button>
+                    <button class="color-btn w-10 h-10 rounded-full bg-sky-500 cursor-pointer transition transform hover:scale-110" data-color="0x0ea5e9"></button>
+                    <button class="color-btn w-10 h-10 rounded-full bg-emerald-500 cursor-pointer transition transform hover:scale-110" data-color="0x10b981"></button>
+                    <button class="color-btn w-10 h-10 rounded-full bg-amber-500 cursor-pointer transition transform hover:scale-110" data-color="0xf59e0b"></button>
+                    <button class="color-btn w-10 h-10 rounded-full bg-purple-500 cursor-pointer transition transform hover:scale-110" data-color="0xa855f7"></button>
+                </div>
+            </div>
+
+            <button id="startBtn" class="w-full py-4 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-extrabold text-xl rounded-2xl shadow-xl transform transition active:scale-95 pulse-glow cursor-pointer">
+                Oyuna Başla 🎮
+            </button>
+        </div>
+    </div>
+
+    <!-- Mobile Touch Controls -->
+    <div class="absolute bottom-6 left-0 w-full px-6 flex justify-between items-center z-10 md:hidden pointer-events-auto">
+        <div class="flex gap-4">
+            <button id="leftBtn" class="w-20 h-20 bg-slate-800/80 backdrop-blur border border-sky-400 rounded-2xl shadow-2xl text-3xl font-extrabold flex items-center justify-center text-sky-400 active:bg-sky-500 active:text-white">⬅️</button>
+            <button id="rightBtn" class="w-20 h-20 bg-slate-800/80 backdrop-blur border border-sky-400 rounded-2xl shadow-2xl text-3xl font-extrabold flex items-center justify-center text-sky-400 active:bg-sky-500 active:text-white">➡️</button>
+        </div>
+        <div class="flex gap-4">
+            <button id="brakeBtn" class="w-20 h-20 bg-rose-600/80 backdrop-blur border border-rose-400 rounded-2xl shadow-2xl text-xl font-extrabold flex items-center justify-center text-white active:bg-rose-700">🛑 Fren</button>
+            <button id="gasBtn" class="w-20 h-20 bg-emerald-600/80 backdrop-blur border border-emerald-400 rounded-2xl shadow-2xl text-xl font-extrabold flex items-center justify-center text-white active:bg-emerald-700">🚀 Gaz</button>
+        </div>
+    </div>
+
+    <script>
+        class SoundManager {
+            constructor() {
+                this.ctx = null;
+                this.enabled = true;
+                this.initAudio();
+            }
+
+            initAudio() {
+                const AudioContext = window.AudioContext || window.webkitAudioContext;
+                if (AudioContext) {
+                    this.ctx = new AudioContext();
+                }
+            }
+
+            playEngine(speedRatio) {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    if (this.ctx.state === 'suspended') this.ctx.resume();
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(55 + speedRatio * 110, this.ctx.currentTime);
+                    gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.1);
+                } catch(e) {}
+            }
+
+            playCoin() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(587.33, this.ctx.currentTime);
+                    osc.frequency.setValueAtTime(880, this.ctx.currentTime + 0.08);
+                    gain.gain.setValueAtTime(0.12, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.3);
+                } catch(e) {}
+            }
+
+            playCrash() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const bufferSize = this.ctx.sampleRate * 0.3;
+                    const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const output = buffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        output[i] = Math.random() * 2 - 1;
+                    }
+                    const whiteNoise = this.ctx.createBufferSource();
+                    whiteNoise.buffer = buffer;
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'lowpass';
+                    filter.frequency.setValueAtTime(800, this.ctx.currentTime);
+                    filter.frequency.linearRampToValueAtTime(100, this.ctx.currentTime + 0.3);
+                    const gain = this.ctx.createGain();
+                    gain.gain.setValueAtTime(0.25, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                    whiteNoise.connect(filter);
+                    filter.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    whiteNoise.start();
+                } catch(e) {}
+            }
+        }
+
+        const soundManager = new SoundManager();
+
+        let scene, camera, renderer, car;
+        let roadLines = [], obstacles = [], buildings = [], trees = [];
+        let isGameStarted = false;
+        let isPaused = false;
+        let score = 0;
+        let health = 3;
+        let speed = 0.4;
+        let targetCarX = 0;
+        let carX = 0;
+        let carColor = 0xef4444;
+        let spawnTimer = 0;
+        let keyLeft = false, keyRight = false, keyGas = false, keyBrake = false;
+        
+        // Traffic Light System
+        let trafficLightPoles = [];
+        let currentTrafficLightState = 'green'; // 'red', 'yellow', 'green'
+        let trafficLightTimer = 0;
+
+        const educationalTips = [
+            "Kırmızı ışıkta mutlaka durmalı, yeşil ışıkta güvenle geçmeliyiz.",
+            "Yoldaki taşların üzerinden geçmek araca zarar verir, etrafından dolaş!",
+            "Yayalar karşıya geçerken onlara her zaman öncelik vermeliyiz.",
+            "Kaldırımlarda yürümeli, yola ani atlamamalıyız.",
+            "Yıldız ve rozetleri toplayarak güvenli sürüş puanı kazan!"
+        ];
+
+        const quizBank = [
+            {
+                q: "Karşıdan karşıya geçerken ilk önce hangi yöne bakmalıyız?",
+                options: ["Önce sola, sonra sağa, tekrar sola", "Koşarak hızlıca karşıya", "Sadece arkaya"],
+                correct: 0
+            },
+            {
+                q: "Trafik lambasında kırmızı ışık yanıyorsa ne yapmalıyız?",
+                options: ["Hızlanıp geçmeliyiz", "Kesinlikle durmalıyız", "Korna çalıp beklemeliyiz"],
+                correct: 1
+            },
+            {
+                q: "Yolda yürürken nerede yürümülüdür?",
+                options: ["Taşıt yolunun ortasında", "Kaldırımda", "Bisiklet yolunda"],
+                correct: 1
+            }
+        ];
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x0284c7);
+            scene.fog = new THREE.FogExp2(0x0284c7, 0.012);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 6, 11);
+            camera.lookAt(0, 0, -2);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.body.appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.65);
+            scene.add(ambientLight);
+
+            const sunLight = new THREE.DirectionalLight(0xfffbeb, 1.2);
+            sunLight.position.set(20, 40, 20);
+            sunLight.castShadow = true;
+            sunLight.shadow.mapSize.width = 2048;
+            sunLight.shadow.mapSize.height = 2048;
+            sunLight.shadow.camera.near = 0.5;
+            sunLight.shadow.camera.far = 200;
+            const d = 30;
+            sunLight.shadow.camera.left = -d;
+            sunLight.shadow.camera.right = d;
+            sunLight.shadow.camera.top = d;
+            sunLight.shadow.camera.bottom = -d;
+            scene.add(sunLight);
+
+            createEnvironment();
+            createDetailedSportsCar();
+
+            // Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('keydown', handleKeyDown);
+            window.addEventListener('keyup', handleKeyUp);
+
+            setupTouchControls();
+            setupColorPickers();
+
+            document.getElementById('startBtn').addEventListener('click', startGame);
+            document.getElementById('soundToggleBtn').addEventListener('click', toggleSound);
+            document.getElementById('pauseBtn').addEventListener('click', togglePause);
+
+            animate();
+        }
+
+        function createEnvironment() {
+            // Grass Ground
+            const grassGeo = new THREE.PlaneGeometry(300, 1600);
+            const grassMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.9 });
+            const grass = new THREE.Mesh(grassGeo, grassMat);
+            grass.rotation.x = -Math.PI / 2;
+            grass.position.set(0, -0.15, -600);
+            scene.add(grass);
+
+            // Sidewalks
+            const sideGeo = new THREE.BoxGeometry(2.5, 0.2, 1600);
+            const sideMat = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.7 });
+            
+            const leftSidewalk = new THREE.Mesh(sideGeo, sideMat);
+            leftSidewalk.position.set(-6.25, 0, -600);
+            leftSidewalk.receiveShadow = true;
+            scene.add(leftSidewalk);
+
+            const rightSidewalk = new THREE.Mesh(sideGeo, sideMat);
+            rightSidewalk.position.set(6.25, 0, -600);
+            rightSidewalk.receiveShadow = true;
+            scene.add(rightSidewalk);
+
+            // Asphalt Road
+            const roadGeo = new THREE.PlaneGeometry(10, 1600);
+            const roadMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+            const road = new THREE.Mesh(roadGeo, roadMat);
+            road.rotation.x = -Math.PI / 2;
+            road.position.set(0, 0, -600);
+            road.receiveShadow = true;
+            scene.add(road);
+
+            // Center lane dashed lines
+            for (let i = 0; i > -700; i -= 8) {
+                const lineGeo = new THREE.BoxGeometry(0.3, 0.02, 3);
+                const lineMat = new THREE.MeshBasicMaterial({ color: 0xfacc15 });
+                const line = new THREE.Mesh(lineGeo, lineMat);
+                line.position.set(0, 0.01, i);
+                scene.add(line);
+                roadLines.push(line);
+            }
+
+            // Spawn Buildings, Trees, and Traffic Lights along sidewalks
+            for (let z = 10; z > -700; z -= 30) {
+                createBuildingPair(z);
+                createTreePair(z + 15);
+                if (z % 90 === 0) {
+                    createTrafficLight(z);
+                }
+            }
+        }
+
+        function createBuildingPair(zPos) {
+            const colors = [0x3b82f6, 0x6366f1, 0x8b5cf6, 0xec4899, 0x14b8a6, 0xf59e0b];
+            
+            // Left Building
+            const h1 = 12 + Math.random() * 16;
+            const bGeo1 = new THREE.BoxGeometry(6.5, h1, 8);
+            const bMat1 = new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random() * colors.length)], roughness: 0.4 });
+            const b1 = new THREE.Mesh(bGeo1, bMat1);
+            b1.position.set(-13, h1 / 2, zPos);
+            b1.castShadow = true;
+            b1.receiveShadow = true;
+            scene.add(b1);
+            buildings.push(b1);
+
+            // Right Building
+            const h2 = 12 + Math.random() * 16;
+            const bGeo2 = new THREE.BoxGeometry(6.5, h2, 8);
+            const bMat2 = new THREE.MeshStandardMaterial({ color: colors[Math.floor(Math.random() * colors.length)], roughness: 0.4 });
+            const b2 = new THREE.Mesh(bGeo2, bMat2);
+            b2.position.set(13, h2 / 2, zPos);
+            b2.castShadow = true;
+            b2.receiveShadow = true;
+            scene.add(b2);
+            buildings.push(b2);
+        }
+
+        function createTreePair(zPos) {
+            const createTree = (x) => {
+                const treeGroup = new THREE.Group();
+                const trunkGeo = new THREE.CylinderGeometry(0.3, 0.4, 2, 8);
+                const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f });
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.y = 1;
+                trunk.castShadow = true;
+                treeGroup.add(trunk);
+
+                const leavesGeo = new THREE.ConeGeometry(1.6, 3.5, 8);
+                const leavesMat = new THREE.MeshStandardMaterial({ color: 0x15803d });
+                const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                leaves.position.y = 3.2;
+                leaves.castShadow = true;
+                treeGroup.add(leaves);
+
+                treeGroup.position.set(x, 0, zPos);
+                scene.add(treeGroup);
+                trees.push(treeGroup);
+            };
+
+            createTree(-8.5);
+            createTree(8.5);
+        }
+
+        function createTrafficLight(zPos) {
+            const group = new THREE.Group();
+
+            // Pole
+            const poleGeo = new THREE.CylinderGeometry(0.15, 0.15, 6, 12);
+            const poleMat = new THREE.MeshStandardMaterial({ color: 0x475569 });
+            const pole = new THREE.Mesh(poleGeo, poleMat);
+            pole.position.y = 3;
+            pole.castShadow = true;
+            group.add(pole);
+
+            // Light Housing Box
+            const boxGeo = new THREE.BoxGeometry(0.8, 2.2, 0.6);
+            const boxMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 });
+            const box = new THREE.Mesh(boxGeo, boxMat);
+            box.position.set(0, 5, 0);
+            group.add(box);
+
+            // Bulbs (Red, Yellow, Green)
+            const bulbGeo = new THREE.SphereGeometry(0.22, 16, 16);
+            
+            const redMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+            const redBulb = new THREE.Mesh(bulbGeo, redMat);
+            redBulb.position.set(0, 5.7, 0.31);
+            redBulb.name = 'redBulb';
+            group.add(redBulb);
+
+            const yellowMat = new THREE.MeshBasicMaterial({ color: 0x451a03 });
+            const yellowBulb = new THREE.Mesh(bulbGeo, yellowMat);
+            yellowBulb.position.set(0, 5, 0.31);
+            yellowBulb.name = 'yellowBulb';
+            group.add(yellowBulb);
+
+            const greenMat = new THREE.MeshBasicMaterial({ color: 0x22c55e });
+            const greenBulb = new THREE.Mesh(bulbGeo, greenMat);
+            greenBulb.position.set(0, 4.3, 0.31);
+            greenBulb.name = 'greenBulb';
+            group.add(greenBulb);
+
+            group.position.set(5.5, 0, zPos);
+            scene.add(group);
+            trafficLightPoles.push(group);
+        }
+
+        function createDetailedSportsCar() {
+            car = new THREE.Group();
+
+            // Main Lower Body Chassis
+            const chassisGeo = new THREE.BoxGeometry(1.8, 0.45, 3.6);
+            const chassisMat = new THREE.MeshStandardMaterial({ color: carColor, roughness: 0.15, metalness: 0.6 });
+            const chassis = new THREE.Mesh(chassisGeo, chassisMat);
+            chassis.position.y = 0.45;
+            chassis.castShadow = true;
+            car.add(chassis);
+
+            // Upper Streamlined Cabin (Aerodynamic windshield & roof)
+            const cabinGeo = new THREE.BoxGeometry(1.4, 0.5, 1.8);
+            const cabinMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.05, metalness: 0.9 });
+            const cabin = new THREE.Mesh(cabinGeo, cabinMat);
+            cabin.position.set(0, 0.92, -0.1);
+            cabin.castShadow = true;
+            car.add(cabin);
+
+            // Front Hood Slant / Nose Cone
+            const hoodGeo = new THREE.BoxGeometry(1.7, 0.3, 1.0);
+            const hood = new THREE.Mesh(hoodGeo, chassisMat);
+            hood.position.set(0, 0.55, 1.4);
+            hood.rotation.x = -0.2;
+            car.add(hood);
+
+            // Rear Racing Spoiler
+            const spoilerBarGeo = new THREE.BoxGeometry(1.7, 0.08, 0.5);
+            const spoilerMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, metalness: 0.8 });
+            const spoilerBar = new THREE.Mesh(spoilerBarGeo, spoilerMat);
+            spoilerBar.position.set(0, 1.05, -1.6);
+            car.add(spoilerBar);
+
+            const sStandGeo = new THREE.BoxGeometry(0.15, 0.3, 0.1);
+            const sStandLeft = new THREE.Mesh(sStandGeo, spoilerMat);
+            sStandLeft.position.set(-0.7, 0.9, -1.6);
+            car.add(sStandLeft);
+
+            const sStandRight = new THREE.Mesh(sStandGeo, spoilerMat);
+            sStandRight.position.set(0.7, 0.9, -1.6);
+            car.add(sStandRight);
+
+            // Detailed Wheels with Alloy Rims
+            const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.38, 24);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.8 });
+            const rimGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.4, 12);
+            const rimMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.8 });
+
+            const wheelPositions = [
+                [-1.02, 0.38, 1.15], [1.02, 0.38, 1.15],
+                [-1.02, 0.38, -1.15], [1.02, 0.38, -1.15]
+            ];
+
+            wheelPositions.forEach(pos => {
+                const wGroup = new THREE.Group();
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.rotation.z = Math.PI / 2;
+                wheel.castShadow = true;
+                wGroup.add(wheel);
+
+                const rim = new THREE.Mesh(rimGeo, rimMat);
+                rim.rotation.z = Math.PI / 2;
+                wGroup.add(rim);
+
+                wGroup.position.set(...pos);
+                car.add(wGroup);
+            });
+
+            // Bright Headlights & Taillights
+            const hlGeo = new THREE.SphereGeometry(0.14, 16, 16);
+            const hlMat = new THREE.MeshBasicMaterial({ color: 0xfef08a });
+            const tlMat = new THREE.MeshBasicMaterial({ color: 0xef4444 });
+
+            const hlLeft = new THREE.Mesh(hlGeo, hlMat);
+            hlLeft.position.set(-0.65, 0.45, 1.82);
+            car.add(hlLeft);
+
+            const hlRight = new THREE.Mesh(hlGeo, hlMat);
+            hlRight.position.set(0.65, 0.45, 1.82);
+            car.add(hlRight);
+
+            const tlLeft = new THREE.Mesh(hlGeo, tlMat);
+            tlLeft.position.set(-0.65, 0.45, -1.82);
+            car.add(tlLeft);
+
+            const tlRight = new THREE.Mesh(hlGeo, tlMat);
+            tlRight.position.set(0.65, 0.45, -1.82);
+            car.add(tlRight);
+
+            car.position.set(0, 0, 0);
+            scene.add(car);
+        }
+
+        function spawnObstacleOrCollectible() {
+            const rand = Math.random();
+            const laneX = (Math.floor(Math.random() * 3) - 1) * 3.2; // -3.2, 0, 3.2
+            const zStart = -160;
+
+            const group = new THREE.Group();
+
+            if (rand < 0.35) {
+                // Rock obstacle
+                const rockGeo = new THREE.DodecahedronGeometry(0.7, 1);
+                const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.8 });
+                const rock = new THREE.Mesh(rockGeo, rockMat);
+                rock.position.y = 0.5;
+                rock.castShadow = true;
+                group.add(rock);
+                group.userData = { type: 'rock', width: 1.2, text: 'Taş Engeli! Etrafından dolaş.' };
+            } else if (rand < 0.65) {
+                // Construction Barrier / Block
+                const bGeo = new THREE.BoxGeometry(2.2, 1.2, 1);
+                const bMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3 });
+                const b = new THREE.Mesh(bGeo, bMat);
+                b.position.y = 0.6;
+                b.castShadow = true;
+                group.add(b);
+                group.userData = { type: 'barrier', width: 2.2, text: 'İnşaat Bariyeri! Dikkatli geç.' };
+            } else if (rand < 0.85) {
+                // Collectible Safety Star / Badge
+                const starGeo = new THREE.OctahedronGeometry(0.6, 0);
+                const starMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, emissive: 0xca8a04, roughness: 0.2 });
+                const star = new THREE.Mesh(starGeo, starMat);
+                star.position.y = 1;
+                group.add(star);
+                group.userData = { type: 'star', width: 1.0, text: 'Harika! Güvenlik Rozeti Kazandın (+50 Puan)' };
+            } else {
+                // Pedestrian crossing road safely
+                const pGroup = new THREE.Group();
+                const bodyGeo = new THREE.CapsuleGeometry(0.3, 0.9, 8, 16);
+                const pMat = new THREE.MeshStandardMaterial({ color: 0x38bdf8 });
+                const pBody = new THREE.Mesh(bodyGeo, pMat);
+                pBody.position.y = 0.9;
+                pBody.castShadow = true;
+                pGroup.add(pBody);
+                
+                const headGeo = new THREE.SphereGeometry(0.25, 16, 16);
+                const headMat = new THREE.MeshStandardMaterial({ color: 0xfde047 });
+                const head = new THREE.Mesh(headGeo, headMat);
+                head.position.y = 1.7;
+                pGroup.add(head);
+
+                group.add(pGroup);
+                group.userData = { type: 'pedestrian', width: 1.5, text: 'Yaya Geçidi! Yayaya mutlaka yol ver.' };
+            }
+
+            group.position.set(laneX, 0, zStart);
+            scene.add(group);
+            obstacles.push(group);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (!isGameStarted || isPaused) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // Traffic light cycle timer & dynamic color updating
+            trafficLightTimer++;
+            if (trafficLightTimer > 450) {
+                trafficLightTimer = 0;
+                if (currentTrafficLightState === 'green') currentTrafficLightState = 'yellow';
+                else if (currentTrafficLightState === 'yellow') currentTrafficLightState = 'red';
+                else currentTrafficLightState = 'green';
+            }
+
+            // Update all traffic light poles in the world
+            trafficLightPoles.forEach(poleGroup => {
+                const redBulb = poleGroup.getObjectByName('redBulb');
+                const yellowBulb = poleGroup.getObjectByName('yellowBulb');
+                const greenBulb = poleGroup.getObjectByName('greenBulb');
+
+                if (redBulb && yellowBulb && greenBulb) {
+                    if (currentTrafficLightState === 'red') {
+                        redBulb.material.color.setHex(0xef4444);
+                        yellowBulb.material.color.setHex(0x451a03);
+                        greenBulb.material.color.setHex(0x14532d);
+                    } else if (currentTrafficLightState === 'yellow') {
+                        redBulb.material.color.setHex(0x7f1d1d);
+                        yellowBulb.material.color.setHex(0xf59e0b);
+                        greenBulb.material.color.setHex(0x14532d);
+                    } else {
+                        redBulb.material.color.setHex(0x7f1d1d);
+                        yellowBulb.material.color.setHex(0x451a03);
+                        greenBulb.material.color.setHex(0x22c55e);
+                    }
+                }
+            });
+
+            // Speed & Acceleration logic
+            let currentSpeedLimit = 0.6;
+            if (currentTrafficLightState === 'red') {
+                currentSpeedLimit = 0.12; // Must slow down or stop at red light!
+            }
+
+            if (keyGas) speed = Math.min(0.9, speed + 0.01);
+            else if (keyBrake) speed = Math.max(0.05, speed - 0.02);
+            else {
+                if (speed > currentSpeedLimit) speed -= 0.005;
+                else if (speed < currentSpeedLimit) speed += 0.005;
+            }
+
+            soundManager.playEngine(speed);
+            document.getElementById('speedVal').innerText = Math.round(speed * 150);
+
+            // Check if player stopped properly at a red light near any traffic light pole
+            trafficLightPoles.forEach(pole => {
+                const dz = Math.abs(car.position.z - pole.position.z);
+                if (dz < 8 && currentTrafficLightState === 'red' && speed < 0.2) {
+                    if (!pole.userData.rewarded) {
+                        pole.userData.rewarded = true;
+                        soundManager.playCoin();
+                        score += 30;
+                        document.getElementById('scoreVal').innerText = score;
+                        showWarning('Harika! Kırmızı Işıkta Doğru Durdun! (+30 Puan)', 'emerald');
+                    }
+                } else if (dz > 12) {
+                    pole.userData.rewarded = false;
+                }
+            });
+
+            // Steering controls
+            if (keyLeft) targetCarX -= 0.18;
+            if (keyRight) targetCarX += 0.18;
+            targetCarX = Math.max(-4.2, Math.min(4.2, targetCarX));
+            carX += (targetCarX - carX) * 0.12;
+            car.position.x = carX;
+            car.rotation.z = (carX - targetCarX) * 0.25;
+            car.rotation.y = (carX - targetCarX) * 0.1;
+
+            // Move Road Lines seamlessly
+            roadLines.forEach(line => {
+                line.position.z += speed;
+                if (line.position.z > 15) line.position.z = -600;
+            });
+
+            // Move Buildings seamlessly together with the road
+            buildings.forEach(b => {
+                b.position.z += speed;
+                if (b.position.z > 25) {
+                    b.position.z = -600;
+                }
+            });
+
+            // Move Trees seamlessly together with the road
+            trees.forEach(t => {
+                t.position.z += speed;
+                if (t.position.z > 25) {
+                    t.position.z = -600;
+                }
+            });
+
+            // Move Traffic Light Poles seamlessly
+            trafficLightPoles.forEach(p => {
+                p.position.z += speed;
+                if (p.position.z > 25) {
+                    p.position.z = -600;
+                }
+            });
+
+            // Spawn obstacles timer
+            spawnTimer++;
+            if (spawnTimer > 45) {
+                spawnObstacleOrCollectible();
+                spawnTimer = 0;
+            }
+
+            // Update obstacles & collectibles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                const obs = obstacles[i];
+                obs.position.z += speed;
+
+                if (obs.userData.type === 'star') {
+                    obs.rotation.y += 0.05;
+                }
+
+                const dx = Math.abs(car.position.x - obs.position.x);
+                const dz = Math.abs(car.position.z - obs.position.z);
+
+                if (dx < obs.userData.width && dz < 1.5) {
+                    if (obs.userData.type === 'star') {
+                        soundManager.playCoin();
+                        score += 50;
+                        document.getElementById('scoreVal').innerText = score;
+                        showWarning(obs.userData.text, 'emerald');
+                        scene.remove(obs);
+                        obstacles.splice(i, 1);
+                        continue;
+                    } else {
+                        soundManager.playCrash();
+                        health--;
+                        updateHealthDisplay();
+                        showWarning(obs.userData.text, 'rose');
+                        scene.remove(obs);
+                        obstacles.splice(i, 1);
+
+                        if (health <= 0) {
+                            endGame();
+                        }
+                        continue;
+                    }
+                }
+
+                if (obs.position.z > 15) {
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                    if (obs.userData.type !== 'star') {
+                        score += 10;
+                        document.getElementById('scoreVal').innerText = score;
+                    }
+
+                    if (Math.random() < 0.25) {
+                        const randomTip = educationalTips[Math.floor(Math.random() * educationalTips.length)];
+                        document.getElementById('tipText').innerText = randomTip;
+                    }
+                }
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        function showWarning(msg, type = 'rose') {
+            const banner = document.getElementById('warningBanner');
+            const msgEl = banner.querySelector('span:last-child');
+            msgEl.innerText = msg;
+            banner.className = `absolute top-28 left-1/2 transform -translate-x-1/2 bg-gradient-to-r ${type === 'rose' ? 'from-rose-600 to-amber-600' : 'from-emerald-600 to-teal-600'} text-white px-8 py-3 rounded-full font-bold text-lg shadow-2xl transition-all duration-300 opacity-100 z-20 flex items-center gap-3`;
+            setTimeout(() => {
+                banner.style.opacity = '0';
+            }, 2500);
+        }
+
+        function updateHealthDisplay() {
+            const container = document.getElementById('healthBars');
+            container.innerHTML = '';
+            for (let i = 0; i < health; i++) {
+                const span = document.createElement('span');
+                span.className = 'w-5 h-5 bg-rose-500 rounded-full inline-block shadow';
+                container.appendChild(span);
+            }
+        }
+
+        function triggerQuiz() {
+            isPaused = true;
+            const modal = document.getElementById('quizModal');
+            const qEl = document.getElementById('quizQuestion');
+            const optContainer = document.getElementById('quizOptions');
+            optContainer.innerHTML = '';
+
+            const quiz = quizBank[Math.floor(Math.random() * quizBank.length)];
+            qEl.innerText = quiz.q;
+
+            quiz.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full py-3 bg-slate-800 hover:bg-sky-600 border border-sky-400/50 rounded-xl font-bold text-white transition shadow-lg cursor-pointer';
+                btn.innerText = opt;
+                btn.onclick = () => {
+                    if (idx === quiz.correct) {
+                        soundManager.playCoin();
+                        score += 100;
+                        document.getElementById('scoreVal').innerText = score;
+                        showWarning('Doğru Cevap! +100 Puan', 'emerald');
+                    } else {
+                        soundManager.playCrash();
+                        showWarning('Yanlış Cevap! Dikkatli ol.', 'rose');
+                    }
+                    modal.classList.add('hidden');
+                    isPaused = false;
+                };
+                optContainer.appendChild(btn);
+            });
+
+            modal.classList.remove('hidden');
+        }
+
+        function startGame() {
+            isGameStarted = true;
+            isPaused = false;
+            score = 0;
+            health = 3;
+            speed = 0.4;
+            document.getElementById('scoreVal').innerText = '0';
+            updateHealthDisplay();
+            document.getElementById('menuOverlay').classList.add('hidden');
+
+            setInterval(() => {
+                if (isGameStarted && !isPaused && Math.random() < 0.5) {
+                    triggerQuiz();
+                }
+            }, 30000);
+        }
+
+        function togglePause() {
+            if (!isGameStarted) return;
+            isPaused = !isPaused;
+            document.getElementById('pauseBtn').innerText = isPaused ? '▶️' : '⏸️';
+        }
+
+        function toggleSound() {
+            soundManager.enabled = !soundManager.enabled;
+            document.getElementById('soundToggleBtn').innerText = soundManager.enabled ? '🔊' : '🔇';
+        }
+
+        function endGame() {
+            isGameStarted = false;
+            const overlay = document.getElementById('menuOverlay');
+            document.getElementById('menuTitle').innerText = 'Oyun Bitti - Güvenli Sürüş Eğitimi';
+            document.getElementById('menuDesc').innerHTML = `Tebrikler! Toplam Skorun: <strong class="text-yellow-400 text-xl">${score}</strong>.<br>Trafik kurallarına uyarak harika bir sürüş deneyimi gerçekleştirdin!`;
+            document.getElementById('startBtn').innerText = 'Tekrar Oyna 🔄';
+            overlay.classList.remove('hidden');
+        }
+
+        function handleKeyDown(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keyLeft = true;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keyRight = true;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keyGas = true;
+            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keyBrake = true;
+        }
+
+        function handleKeyUp(e) {
+            if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') keyLeft = false;
+            if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') keyRight = false;
+            if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') keyGas = false;
+            if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') keyBrake = false;
+        }
+
+        function setupTouchControls() {
+            const bindTouch = (id, startAction, endAction) => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                el.addEventListener('touchstart', (e) => { e.preventDefault(); startAction(); });
+                el.addEventListener('touchend', (e) => { e.preventDefault(); endAction(); });
+                el.addEventListener('mousedown', (e) => { e.preventDefault(); startAction(); });
+                el.addEventListener('mouseup', (e) => { e.preventDefault(); endAction(); });
+            };
+
+            bindTouch('leftBtn', () => keyLeft = true, () => keyLeft = false);
+            bindTouch('rightBtn', () => keyRight = true, () => keyRight = false);
+            bindTouch('gasBtn', () => keyGas = true, () => keyGas = false);
+            bindTouch('brakeBtn', () => keyBrake = true, () => keyBrake = false);
+        }
+
+        function setupColorPickers() {
+            document.querySelectorAll('.color-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('ring-4', 'ring-white'));
+                    btn.classList.add('ring-4', 'ring-white');
+                    carColor = parseInt(btn.getAttribute('data-color'));
+                    if (car) {
+                        scene.remove(car);
+                        createDetailedSportsCar();
+                    }
+                });
+            });
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
