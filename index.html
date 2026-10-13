@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Divided Highway Turbo Racer - Educational Edition</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #030712;
+            color: #f8fafc;
+            overflow: hidden;
+            touch-action: none;
+            user-select: none;
+        }
+        .font-arcade {
+            font-family: 'Orbitron', sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+        .glow-text {
+            text-shadow: 0 0 20px rgba(59, 130, 246, 0.7), 0 0 40px rgba(147, 51, 234, 0.4);
+        }
+        .hud-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(14px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+        .btn-arcade {
+            background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+            box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.5);
+            transition: all 0.15s ease;
+        }
+        .btn-arcade:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px -5px rgba(59, 130, 246, 0.7);
+        }
+        .btn-quiz {
+            background: linear-gradient(135deg, #10b981 0%, #047857 100%);
+            box-shadow: 0 10px 25px -5px rgba(16, 185, 129, 0.5);
+            transition: all 0.15s ease;
+        }
+        .btn-quiz:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px -5px rgba(16, 185, 129, 0.7);
+        }
+        .speed-lines {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            background: radial-gradient(circle, transparent 55%, rgba(0,0,0,0.85) 100%);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+        .speed-lines.active {
+            opacity: 0.65;
+        }
+        .turbo-glow {
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.6);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+    <div id="speedLines" class="speed-lines"></div>
+
+    <!-- HUD Overlay -->
+    <div id="hud" class="absolute top-0 left-0 w-full p-6 flex justify-between items-center z-10 pointer-events-none hidden">
+        <div class="hud-panel px-6 py-3 rounded-2xl flex items-center space-x-6 shadow-2xl">
+            <div>
+                <p class="text-xs text-slate-400 font-arcade uppercase tracking-wider">Score</p>
+                <p id="scoreDisplay" class="text-3xl font-black font-arcade text-blue-400">0</p>
+            </div>
+            <div class="h-8 w-px bg-slate-700"></div>
+            <div>
+                <p class="text-xs text-slate-400 font-arcade uppercase tracking-wider">Speed</p>
+                <p class="text-3xl font-black font-arcade text-emerald-400"><span id="speedDisplay">80</span> <span class="text-sm font-normal text-slate-400">km/h</span></p>
+            </div>
+            <div class="h-8 w-px bg-slate-700"></div>
+            <div>
+                <p class="text-xs text-rose-400 font-arcade uppercase tracking-wider">Turbo Energy</p>
+                <div class="w-28 bg-slate-800 h-3 rounded-full overflow-hidden mt-1 border border-rose-500/30">
+                    <div id="turboBar" class="bg-rose-500 h-full w-full transition-all duration-100 turbo-glow"></div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="flex items-center space-x-4 pointer-events-auto">
+            <button id="openQuizBtn" class="hud-panel px-5 py-3 rounded-2xl font-arcade font-bold text-emerald-400 hover:bg-emerald-500/10 border-emerald-500/30 flex items-center space-x-2 shadow-2xl transition">
+                <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                <span>TRAFFIC QUIZ 🚦</span>
+            </button>
+            <div class="hud-panel px-5 py-3 rounded-2xl text-right shadow-2xl pointer-events-none">
+                <p class="text-xs text-slate-400 font-arcade uppercase tracking-wider">High Score</p>
+                <p id="highScoreDisplay" class="text-xl font-bold font-arcade text-amber-400">0</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Touch Controls for Mobile/Tablet -->
+    <div id="touchControls" class="absolute bottom-6 left-0 w-full px-6 flex justify-between items-center z-10 pointer-events-auto hidden">
+        <div class="flex space-x-4">
+            <button id="btnLeft" class="w-20 h-20 bg-slate-800/80 backdrop-blur border border-white/20 rounded-full flex items-center justify-center text-3xl active:bg-blue-600 active:scale-95 transition shadow-2xl text-white">◀</button>
+            <button id="btnRight" class="w-20 h-20 bg-slate-800/80 backdrop-blur border border-white/20 rounded-full flex items-center justify-center text-3xl active:bg-blue-600 active:scale-95 transition shadow-2xl text-white">▶</button>
+        </div>
+        <div class="flex space-x-4">
+            <button id="btnBrake" class="w-16 h-16 bg-blue-900/60 backdrop-blur border border-blue-500/40 rounded-full flex items-center justify-center text-xs font-bold font-arcade active:bg-blue-500 active:scale-95 transition shadow-2xl text-blue-200">BRAKE</button>
+            <button id="btnTurbo" class="w-20 h-20 bg-rose-600/80 backdrop-blur border border-rose-400/40 rounded-full flex items-center justify-center text-xs font-black font-arcade active:bg-rose-500 active:scale-95 transition shadow-2xl text-white">TURBO</button>
+        </div>
+    </div>
+
+    <!-- Main Menu Modal -->
+    <div id="menuScreen" class="absolute inset-0 flex items-center justify-center z-20 bg-slate-950/85 backdrop-blur-md">
+        <div class="hud-panel p-10 rounded-3xl max-w-lg w-full text-center shadow-2xl border border-white/10 mx-4">
+            <div class="inline-block p-4 bg-blue-500/10 rounded-2xl mb-6 border border-blue-500/20">
+                <svg class="w-16 h-16 text-blue-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path>
+                </svg>
+            </div>
+            <h1 class="text-4xl font-black font-arcade text-white mb-2 glow-text tracking-wider">DIVIDED HIGHWAY</h1>
+            <p class="text-slate-400 mb-6 text-sm">Left 2 Lanes: Oncoming Traffic | Right 2 Lanes: Same Direction Traffic</p>
+            
+            <div class="bg-slate-900/60 p-4 rounded-2xl mb-8 border border-white/5 text-left space-y-2">
+                <p class="text-xs text-slate-400 font-arcade uppercase font-semibold">Game Controls</p>
+                <div class="flex justify-between items-center text-sm text-slate-300">
+                    <span>Lane Switch</span>
+                    <span class="px-2 py-1 bg-slate-800 rounded text-xs font-mono border border-slate-700">A / D or ◄ / ►</span>
+                </div>
+                <div class="flex justify-between items-center text-sm text-slate-300">
+                    <span>Turbo Speed Up</span>
+                    <span class="px-2 py-1 bg-slate-800 rounded text-xs font-mono border border-slate-700">Left Shift ⇧</span>
+                </div>
+                <div class="flex justify-between items-center text-sm text-slate-300">
+                    <span>Brake / Slow Down</span>
+                    <span class="px-2 py-1 bg-slate-800 rounded text-xs font-mono border border-slate-700">Spacebar</span>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <button id="startBtn" class="w-full py-4 rounded-2xl btn-arcade text-white font-black font-arcade text-lg tracking-wider shadow-lg flex items-center justify-center space-x-2">
+                    <span>START RACE</span>
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
+                </button>
+                <button id="menuQuizBtn" class="w-full py-4 rounded-2xl btn-quiz text-white font-black font-arcade text-base tracking-wider shadow-lg flex items-center justify-center space-x-2">
+                    <span>TRAFFIC QUIZ MODE (TEST KNOWLEDGE)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- In-Game Traffic Rules Quiz Modal -->
+    <div id="quizModal" class="absolute inset-0 flex items-center justify-center z-30 bg-slate-950/90 backdrop-blur-lg hidden">
+        <div class="hud-panel p-8 rounded-3xl max-w-xl w-full shadow-2xl border border-emerald-500/30 mx-4">
+            <div class="flex justify-between items-center mb-6 border-b border-white/10 pb-4">
+                <div class="flex items-center space-x-3">
+                    <span class="p-2 bg-emerald-500/20 rounded-xl text-emerald-400 text-xl">🚦</span>
+                    <h2 class="text-xl font-black font-arcade text-emerald-400 tracking-wider">EDUCATIONAL TRAFFIC QUIZ</h2>
+                </div>
+                <button id="closeQuizBtn" class="text-slate-400 hover:text-white text-2xl font-bold">&times;</button>
+            </div>
+            
+            <div id="quizQuestionContainer">
+                <p id="quizQuestionNumber" class="text-xs text-slate-400 font-arcade uppercase mb-2">Question 1 of 5</p>
+                <h3 id="quizQuestionText" class="text-lg font-bold text-white mb-6 leading-relaxed">Soru yükleniyor...</h3>
+                
+                <div id="quizOptionsList" class="space-y-3 mb-6">
+                    <!-- Dynamic Options -->
+                </div>
+                
+                <div id="quizFeedback" class="p-4 rounded-xl text-sm font-semibold hidden mb-4"></div>
+            </div>
+
+            <div id="quizCompleteContainer" class="text-center py-6 hidden">
+                <div class="inline-block p-4 bg-emerald-500/10 rounded-2xl mb-4 border border-emerald-500/30">
+                    <svg class="w-12 h-12 text-emerald-400 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                </div>
+                <h3 class="text-2xl font-black font-arcade text-emerald-400 mb-2">QUIZ COMPLETED!</h3>
+                <p id="quizRewardSummary" class="text-slate-300 mb-6 text-sm">Correct answers rewarded with +500 Score & Full Turbo Energy!</p>
+                <button id="resumeGameBtn" class="w-full py-3 rounded-2xl btn-quiz text-white font-black font-arcade text-base tracking-wider shadow-lg">CONTINUE GAME</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="gameOverScreen" class="absolute inset-0 flex items-center justify-center z-20 bg-slate-950/85 backdrop-blur-md hidden">
+        <div class="hud-panel p-10 rounded-3xl max-w-md w-full text-center shadow-2xl border border-red-500/30 mx-4">
+            <div class="inline-block p-4 bg-red-500/10 rounded-2xl mb-4 border border-red-500/20">
+                <svg class="w-12 h-12 text-red-500 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
+                </svg>
+            </div>
+            <h2 class="text-3xl font-black font-arcade text-red-500 mb-1 tracking-wider">CRASH!</h2>
+            <p class="text-slate-400 mb-6 text-sm">Collision detected on highway.</p>
+            
+            <div class="grid grid-cols-2 gap-4 mb-8">
+                <div class="bg-slate-900/60 p-4 rounded-2xl border border-white/5">
+                    <p class="text-xs text-slate-400 font-arcade uppercase">Final Score</p>
+                    <p id="finalScore" class="text-2xl font-black font-arcade text-blue-400 mt-1">0</p>
+                </div>
+                <div class="bg-slate-900/60 p-4 rounded-2xl border border-white/5">
+                    <p class="text-xs text-slate-400 font-arcade uppercase">Best Score</p>
+                    <p id="finalHighScore" class="text-2xl font-black font-arcade text-amber-400 mt-1">0</p>
+                </div>
+            </div>
+
+            <button id="restartBtn" class="w-full py-4 rounded-2xl btn-arcade text-white font-black font-arcade text-lg tracking-wider shadow-lg flex items-center justify-center space-x-2">
+                <span>PLAY AGAIN</span>
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let scene, camera, renderer;
+        let playerCar;
+        let obstacles = [];
+        let sceneryObjects = [];
+        let roadLines = [];
+        let particleSystem;
+        
+        let gameState = 'MENU'; // MENU, PLAYING, QUIZ, GAMEOVER
+        let score = 0;
+        let highScore = localStorage.getItem('highway_highscore_divided_v3') || 0;
+        let distanceTraveled = 0;
+        
+        // Balanced speed setup
+        let gameSpeed = 0.45;
+        let baseSpeed = 0.45;
+        let minSpeed = 0.25;
+        let maxSpeed = 1.15;
+        let turboSpeed = 1.65;
+        
+        let isTurboActive = false;
+        let isBraking = false;
+        let turboEnergy = 100;
+        
+        // 4 Lanes X coordinates configuration (Road width 16 units)
+        // Lanes: 0 & 1 (Left side) = Oncoming traffic (moving down towards player)
+        // Lanes: 2 & 3 (Right side) = Same direction traffic (moving forward)
+        const lanes = [-4.8, -1.6, 1.6, 4.8];
+        let targetLaneIndex = 2; // Player starts on lane 2 (right side going forward)
+        let playerCurrentX = lanes[targetLaneIndex];
+        
+        const keys = { left: false, right: false, turbo: false, brake: false };
+        let obstacleSpawnTimer = 0;
+        let quizTriggerDistance = 0;
+        let audioCtx = null;
+
+        // Educational Traffic Rules Quiz Questions (Turkish)
+        const quizQuestions = [
+            {
+                question: "Aksine bir işaret yoksa, yerleşim yeri dışındaki iki yönlü karayollarında otomobiller için azami hız sınırı saatte kaç kilometredir?",
+                options: ["A) 70 km/s", "B) 90 km/s", "C) 110 km/s", "D) 120 km/s"],
+                correct: 1
+            },
+            {
+                question: "Önünüzdeki aracı takip ederken aradaki güvenli mesafe (takip mesafesi), aracın hızının kaçta biri kadardır?",
+                options: ["A) Yarısı (1/2)", "B) Tamamı (1/1)", "C) Üçte biri", "D) Dörtte biri"],
+                correct: 0
+            },
+            {
+                question: "Kırmızı ışıkta geçen bir sürücü hangi trafik kuralını ihlal etmiş olur ve ne anlam taşır?",
+                options: ["A) Dikkatli geç", "B) Mutlak durma ve geçiş yasağı", "C) Yol ver", "D) Hızlan"],
+                correct: 1
+            },
+            {
+                question: "Aksine bir işaret yoksa, yerleşim yeri içindeki iki yönlü karayollarında otomobiller için azami hız sınırı nedir?",
+                options: ["A) 30 km/s", "B) 50 km/s", "C) 70 km/s", "D) 90 km/s"],
+                correct: 1
+            },
+            {
+                question: "Gece sürüşünde karşı yönden gelen araçlar yaklaştığında sürücülerin hangi ışıkları yakması zorunludur?",
+                options: ["A) Uzun hüzmeli farlar", "B) Kısa hüzmeli farlar (Uzaklığı azalt)", "C) Sis farları", "D) Dörtlü flaşörler"],
+                correct: 1
+            }
+        ];
+        let currentQuestionIndex = 0;
+        let quizActiveGamePausedState = 'PLAYING';
+
+        document.getElementById('highScoreDisplay').innerText = highScore;
+
+        function initAudio() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playCrashSound() {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(120, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(30, audioCtx.currentTime + 0.4);
+                gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.4);
+            } catch(e) {}
+        }
+
+        function playLaneChangeSound() {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(350, audioCtx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(200, audioCtx.currentTime + 0.08);
+                gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.08);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.08);
+            } catch(e) {}
+        }
+
+        function playCorrectSound() {
+            if (!audioCtx) return;
+            try {
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(440, audioCtx.currentTime);
+                osc.frequency.setValueAtTime(660, audioCtx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.3);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 0.3);
+            } catch(e) {}
+        }
+
+        function initThree() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x050814);
+            scene.fog = new THREE.FogExp2(0x050814, 0.012);
+
+            camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 5.8, 12);
+            camera.lookAt(0, 0.8, -4);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfff5ea, 1.2);
+            dirLight.position.set(25, 45, 25);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 150;
+            const d = 35;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            const hemiLight = new THREE.HemisphereLight(0x38bdf8, 0x1e1b4b, 0.5);
+            scene.add(hemiLight);
+
+            buildEnvironment();
+            createPlayerCar();
+            createParticleSystem();
+
+            window.addEventListener('resize', onWindowResize);
+            setupInputListeners();
+        }
+
+        function buildEnvironment() {
+            // Asphalt Road (16 units wide for 4 lanes)
+            const roadGeometry = new THREE.PlaneGeometry(16, 1200);
+            const roadMaterial = new THREE.MeshStandardMaterial({ 
+                color: 0x111827,
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            const road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.rotation.x = -Math.PI / 2;
+            road.position.z = -500;
+            road.receiveShadow = true;
+            scene.add(road);
+
+            // Side shoulders / terrain
+            const shoulderGeometry = new THREE.PlaneGeometry(120, 1200);
+            const shoulderMaterial = new THREE.MeshStandardMaterial({ color: 0x060913, roughness: 0.95 });
+            const leftShoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial);
+            leftShoulder.rotation.x = -Math.PI / 2;
+            leftShoulder.position.set(-68, -0.05, -500);
+            leftShoulder.receiveShadow = true;
+            scene.add(leftShoulder);
+
+            const rightShoulder = new THREE.Mesh(shoulderGeometry, shoulderMaterial);
+            rightShoulder.rotation.x = -Math.PI / 2;
+            rightShoulder.position.set(68, -0.05, -500);
+            rightShoulder.receiveShadow = true;
+            scene.add(rightShoulder);
+
+            // Lane Dividers
+            // Center divider (x = 0) is a solid yellow double line for divided highway
+            for (let i = 0; i < 120; i++) {
+                const yellowGeo = new THREE.BoxGeometry(0.3, 0.05, 3.5);
+                const yellowMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b });
+                const yLine1 = new THREE.Mesh(yellowGeo, yellowMat);
+                yLine1.position.set(-0.15, 0.02, -i * 10);
+                scene.add(yLine1);
+                roadLines.push(yLine1);
+
+                const yLine2 = new THREE.Mesh(yellowGeo, yellowMat);
+                yLine2.position.set(0.15, 0.02, -i * 10);
+                scene.add(yLine2);
+                roadLines.push(yLine2);
+            }
+
+            // Outer lane dividers (x = -3.2 and x = 3.2) are white dashed lines
+            [-3.2, 3.2].forEach(posX => {
+                for (let i = 0; i < 120; i++) {
+                    const lineGeo = new THREE.BoxGeometry(0.2, 0.04, 3.5);
+                    const lineMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+                    const line = new THREE.Mesh(lineGeo, lineMat);
+                    line.position.set(posX, 0.02, -i * 10);
+                    scene.add(line);
+                    roadLines.push(line);
+                }
+            });
+
+            // Roadside neon barriers & trees
+            [-8.5, 8.5].forEach((posX, sideIdx) => {
+                for (let i = 0; i < 60; i++) {
+                    const barrierGeo = new THREE.BoxGeometry(0.3, 0.7, 6);
+                    const barrierMat = new THREE.MeshStandardMaterial({ 
+                        color: sideIdx === 0 ? 0xef4444 : 0x3b82f6,
+                        emissive: sideIdx === 0 ? 0xef4444 : 0x3b82f6,
+                        emissiveIntensity: 0.5
+                    });
+                    const barrier = new THREE.Mesh(barrierGeo, barrierMat);
+                    barrier.position.set(posX, 0.35, -i * 20);
+                    barrier.castShadow = true;
+                    scene.add(barrier);
+                    sceneryObjects.push(barrier);
+
+                    const treeGeo = new THREE.ConeGeometry(1.5, 4, 5);
+                    const treeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.9 });
+                    const tree = new THREE.Mesh(treeGeo, treeMat);
+                    tree.position.set(sideIdx === 0 ? -14 : 14, 2, -i * 20 - 5);
+                    tree.castShadow = true;
+                    scene.add(tree);
+                    sceneryObjects.push(tree);
+                }
+            });
+        }
+
+        function createPlayerCar() {
+            const carGroup = new THREE.Group();
+
+            const bodyGeo = new THREE.BoxGeometry(1.9, 0.65, 4.2);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.25, metalness: 0.85 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            carGroup.add(body);
+
+            const roofGeo = new THREE.BoxGeometry(1.4, 0.45, 2.0);
+            const roofMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.1, metalness: 0.9 });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.set(0, 1.0, -0.1);
+            roof.castShadow = true;
+            carGroup.add(roof);
+
+            const glassMat = new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.1, metalness: 0.9, transparent: true, opacity: 0.75 });
+            const windShield = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.4, 1.1), glassMat);
+            windShield.position.set(0, 0.95, 0.85);
+            windShield.rotation.x = -0.4;
+            carGroup.add(windShield);
+
+            const lightGeo = new THREE.BoxGeometry(0.35, 0.18, 0.1);
+            const lightMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+            const hl1 = new THREE.Mesh(lightGeo, lightMat);
+            hl1.position.set(-0.7, 0.45, 2.15);
+            carGroup.add(hl1);
+            const hl2 = new THREE.Mesh(lightGeo, lightMat);
+            hl2.position.set(0.7, 0.45, 2.15);
+            carGroup.add(hl2);
+
+            const wheelGeo = new THREE.CylinderGeometry(0.38, 0.38, 0.35, 16);
+            wheelGeo.rotateZ(Math.PI / 2);
+            const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.8 });
+
+            const wheelPositions = [[-1.0, 0.38, 1.3], [1.0, 0.38, 1.3], [-1.0, 0.38, -1.3], [1.0, 0.38, -1.3]];
+            wheelPositions.forEach(pos => {
+                const wheel = new THREE.Mesh(wheelGeo, wheelMat);
+                wheel.position.set(...pos);
+                wheel.castShadow = true;
+                carGroup.add(wheel);
+            });
+
+            carGroup.position.set(playerCurrentX, 0, 4);
+            scene.add(carGroup);
+            playerCar = carGroup;
+        }
+
+        function createParticleSystem() {
+            const particleCount = 180;
+            const geometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount * 3; i += 3) {
+                positions[i] = (Math.random() - 0.5) * 50;
+                positions[i + 1] = Math.random() * 20;
+                positions[i + 2] = (Math.random() - 0.5) * 200;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const material = new THREE.PointsMaterial({
+                color: 0x38bdf8,
+                size: 0.4,
+                transparent: true,
+                opacity: 0.5
+            });
+
+            particleSystem = new THREE.Points(geometry, material);
+            scene.add(particleSystem);
+        }
+
+        function spawnObstacleCar() {
+            const carGroup = new THREE.Group();
+            const colors = [0xef4444, 0x10b981, 0xf59e0b, 0x8b5cf6, 0xec4899, 0xe2e8f0];
+            const randomColor = colors[Math.floor(Math.random() * colors.length)];
+
+            const bodyGeo = new THREE.BoxGeometry(1.9, 0.65, 4.2);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: randomColor, roughness: 0.35, metalness: 0.6 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 0.5;
+            body.castShadow = true;
+            carGroup.add(body);
+
+            const roofGeo = new THREE.BoxGeometry(1.4, 0.45, 2.0);
+            const roofMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.2 });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.set(0, 1.0, -0.1);
+            roof.castShadow = true;
+            carGroup.add(roof);
+
+            const laneIndex = Math.floor(Math.random() * lanes.length);
+            const posX = lanes[laneIndex];
+            const isOncoming = laneIndex < 2; // Lanes 0 and 1: Oncoming traffic coming DOWNWARDS towards player
+
+            // If oncoming, headlight color; if forward, tail light color
+            const lightGeo = new THREE.BoxGeometry(0.35, 0.12, 0.1);
+            const lightMat = new THREE.MeshBasicMaterial({ color: isOncoming ? 0xffffff : 0xff0000 });
+            const l1 = new THREE.Mesh(lightGeo, lightMat);
+            l1.position.set(-0.7, 0.45, isOncoming ? 2.15 : -2.15);
+            carGroup.add(l1);
+            const l2 = new THREE.Mesh(lightGeo, lightMat);
+            l2.position.set(0.7, 0.45, isOncoming ? 2.15 : -2.15);
+            carGroup.add(l2);
+
+            carGroup.position.set(posX, 0, -220);
+            scene.add(carGroup);
+
+            obstacles.push({
+                mesh: carGroup,
+                laneIndex: laneIndex,
+                isOncoming: isOncoming,
+                speed: isOncoming ? (Math.random() * 0.2 + 0.35) : (Math.random() * 0.15 + 0.2)
+            });
+        }
+
+        function setupInputListeners() {
+            window.addEventListener('keydown', (e) => {
+                if (gameState === 'QUIZ') return;
+                initAudio();
+                
+                if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') {
+                    if (targetLaneIndex > 0 && gameState === 'PLAYING') {
+                        targetLaneIndex--;
+                        playLaneChangeSound();
+                    }
+                }
+                if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') {
+                    if (targetLaneIndex < lanes.length - 1 && gameState === 'PLAYING') {
+                        targetLaneIndex++;
+                        playLaneChangeSound();
+                    }
+                }
+                if (e.key === 'Shift') {
+                    keys.turbo = true;
+                }
+                if (e.code === 'Space') {
+                    keys.brake = true;
+                    e.preventDefault();
+                }
+            });
+
+            window.addEventListener('keyup', (e) => {
+                if (e.key === 'Shift') keys.turbo = false;
+                if (e.code === 'Space') keys.brake = false;
+            });
+
+            // Touch UI bindings
+            const btnLeft = document.getElementById('btnLeft');
+            const btnRight = document.getElementById('btnRight');
+            const btnTurbo = document.getElementById('btnTurbo');
+            const btnBrake = document.getElementById('btnBrake');
+
+            btnLeft.addEventListener('click', () => {
+                initAudio();
+                if (gameState === 'PLAYING' && targetLaneIndex > 0) {
+                    targetLaneIndex--;
+                    playLaneChangeSound();
+                }
+            });
+            btnRight.addEventListener('click', () => {
+                initAudio();
+                if (gameState === 'PLAYING' && targetLaneIndex < lanes.length - 1) {
+                    targetLaneIndex++;
+                    playLaneChangeSound();
+                }
+            });
+            
+            btnTurbo.addEventListener('touchstart', (e) => { e.preventDefault(); keys.turbo = true; });
+            btnTurbo.addEventListener('touchend', (e) => { e.preventDefault(); keys.turbo = false; });
+            btnBrake.addEventListener('touchstart', (e) => { e.preventDefault(); keys.brake = true; });
+            btnBrake.addEventListener('touchend', (e) => { e.preventDefault(); keys.brake = false; });
+
+            document.getElementById('startBtn').addEventListener('click', () => { initAudio(); startGame(); });
+            document.getElementById('restartBtn').addEventListener('click', () => { initAudio(); startGame(); });
+            document.getElementById('openQuizBtn').addEventListener('click', () => { openQuizModal(); });
+            document.getElementById('menuQuizBtn').addEventListener('click', () => { openQuizModal(true); });
+            document.getElementById('closeQuizBtn').addEventListener('click', () => { closeQuizModal(); });
+            document.getElementById('resumeGameBtn').addEventListener('click', () => { closeQuizModal(); });
+        }
+
+        function openQuizModal(fromMenu = false) {
+            initAudio();
+            if (gameState === 'PLAYING') {
+                quizActiveGamePausedState = 'PLAYING';
+                gameState = 'QUIZ';
+            } else if (gameState === 'MENU' || fromMenu) {
+                quizActiveGamePausedState = 'MENU';
+                gameState = 'QUIZ';
+            }
+            currentQuestionIndex = Math.floor(Math.random() * quizQuestions.length);
+            loadQuizQuestion();
+            document.getElementById('menuScreen').classList.add('hidden');
+            document.getElementById('quizModal').classList.remove('hidden');
+            document.getElementById('quizQuestionContainer').classList.remove('hidden');
+            document.getElementById('quizCompleteContainer').classList.add('hidden');
+        }
+
+        function closeQuizModal() {
+            document.getElementById('quizModal').classList.add('hidden');
+            if (quizActiveGamePausedState === 'PLAYING') {
+                gameState = 'PLAYING';
+            } else {
+                gameState = 'MENU';
+                document.getElementById('menuScreen').classList.remove('hidden');
+            }
+        }
+
+        function loadQuizQuestion() {
+            const q = quizQuestions[currentQuestionIndex];
+            document.getElementById('quizQuestionNumber').innerText = `Traffic Safety Question`;
+            document.getElementById('quizQuestionText').innerText = q.question;
+            
+            const optionsList = document.getElementById('quizOptionsList');
+            optionsList.innerHTML = '';
+            
+            const feedbackEl = document.getElementById('quizFeedback');
+            feedbackEl.classList.add('hidden');
+
+            q.options.forEach((opt, idx) => {
+                const btn = document.createElement('button');
+                btn.className = 'w-full text-left p-4 rounded-xl bg-slate-900/80 hover:bg-emerald-600/20 border border-white/10 hover:border-emerald-500/50 text-sm font-semibold text-slate-200 transition flex items-center justify-between';
+                btn.innerHTML = `<span>${opt}</span>`;
+                btn.onclick = () => checkQuizAnswer(idx);
+                optionsList.appendChild(btn);
+            });
+        }
+
+        function checkQuizAnswer(selectedIdx) {
+            const q = quizQuestions[currentQuestionIndex];
+            const feedbackEl = document.getElementById('quizFeedback');
+            feedbackEl.classList.remove('hidden');
+
+            const optionBtns = document.querySelectorAll('#quizOptionsList button');
+            optionBtns.forEach((b, i) => {
+                b.disabled = true;
+                if (i === q.correct) {
+                    b.classList.add('bg-emerald-500/30', 'border-emerald-500');
+                } else if (i === selectedIdx && i !== q.correct) {
+                    b.classList.add('bg-red-500/30', 'border-red-500');
+                }
+            });
+
+            if (selectedIdx === q.correct) {
+                playCorrectSound();
+                feedbackEl.className = 'p-4 rounded-xl text-sm font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 mb-4';
+                feedbackEl.innerText = 'Doğru Cevap! +500 Puan ve %100 Turbo Enerjisi Kazanıldı!';
+                score += 500;
+                turboEnergy = 100;
+            } else {
+                feedbackEl.className = 'p-4 rounded-xl text-sm font-semibold bg-red-500/20 text-red-400 border border-red-500/30 mb-4';
+                feedbackEl.innerText = `Yanlış! Doğru cevap: ${q.options[q.correct]}`;
+            }
+
+            setTimeout(() => {
+                document.getElementById('quizQuestionContainer').classList.add('hidden');
+                document.getElementById('quizCompleteContainer').classList.remove('hidden');
+            }, 1800);
+        }
+
+        function startGame() {
+            obstacles.forEach(obs => scene.remove(obs.mesh));
+            obstacles = [];
+
+            targetLaneIndex = 2; // Default starting in right lane group (same direction)
+            playerCurrentX = lanes[targetLaneIndex];
+            playerCar.position.x = playerCurrentX;
+
+            score = 0;
+            distanceTraveled = 0;
+            quizTriggerDistance = 15000; // Trigger educational quiz periodically
+            gameSpeed = baseSpeed;
+            turboEnergy = 100;
+            isTurboActive = false;
+            isBraking = false;
+            obstacleSpawnTimer = 0;
+
+            document.getElementById('menuScreen').classList.add('hidden');
+            document.getElementById('gameOverScreen').classList.add('hidden');
+            document.getElementById('hud').classList.remove('hidden');
+            document.getElementById('touchControls').classList.remove('hidden');
+            document.getElementById('speedLines').classList.add('active');
+
+            gameState = 'PLAYING';
+        }
+
+        function triggerGameOver() {
+            gameState = 'GAMEOVER';
+            playCrashSound();
+            document.getElementById('speedLines').classList.remove('active');
+            document.getElementById('touchControls').classList.add('hidden');
+            
+            if (score > highScore) {
+                highScore = Math.floor(score);
+                localStorage.setItem('highway_highscore_divided_v3', highScore);
+                document.getElementById('highScoreDisplay').innerText = highScore;
+            }
+
+            document.getElementById('finalScore').innerText = Math.floor(score);
+            document.getElementById('finalHighScore').innerText = highScore;
+            document.getElementById('gameOverScreen').classList.remove('hidden');
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameState === 'PLAYING') {
+                // Speed control logic (Shift for turbo, Space for brake)
+                if (keys.turbo && turboEnergy > 0) {
+                    isTurboActive = true;
+                    if (gameSpeed < turboSpeed) gameSpeed += 0.015;
+                    turboEnergy -= 0.35;
+                    if (turboEnergy <= 0) {
+                        turboEnergy = 0;
+                        isTurboActive = false;
+                    }
+                } else {
+                    isTurboActive = false;
+                    if (turboEnergy < 100) turboEnergy += 0.08;
+                    
+                    if (keys.brake) {
+                        if (gameSpeed > minSpeed) gameSpeed -= 0.02;
+                    } else {
+                        if (gameSpeed > baseSpeed) gameSpeed -= 0.005;
+                        if (gameSpeed < baseSpeed) gameSpeed += 0.005;
+                    }
+                }
+
+                document.getElementById('turboBar').style.width = `${turboEnergy}%`;
+
+                // Smooth lane switching interpolation (Lerp)
+                const targetX = lanes[targetLaneIndex];
+                playerCurrentX += (targetX - playerCurrentX) * 0.22;
+                playerCar.position.x = playerCurrentX;
+
+                // Car banking tilt effect
+                const tilt = (targetX - playerCurrentX) * 0.08;
+                playerCar.rotation.z = -tilt;
+                playerCar.rotation.y = tilt * 0.4;
+
+                // Score & distance progression
+                const speedMult = (isTurboActive ? 2.5 : 1.2);
+                score += gameSpeed * speedMult;
+                distanceTraveled += gameSpeed * speedMult * 10;
+                document.getElementById('scoreDisplay').innerText = Math.floor(score);
+                document.getElementById('speedDisplay').innerText = Math.floor(gameSpeed * 110);
+
+                // Check if it's time for an educational traffic quiz checkpoint
+                if (distanceTraveled > quizTriggerDistance) {
+                    quizTriggerDistance += 2000;
+                    openQuizModal();
+                }
+
+                // Road markings scrolling effect
+                roadLines.forEach(line => {
+                    line.position.z += gameSpeed;
+                    if (line.position.z > 10) {
+                        line.position.z -= 120;
+                    }
+                });
+
+                // Particle starfield speed effect
+                const positions = particleSystem.geometry.attributes.position.array;
+                for (let i = 2; i < positions.length; i += 3) {
+                    positions[i] += gameSpeed * 1.8;
+                    if (positions[i] > 40) positions[i] = -160;
+                }
+                particleSystem.geometry.attributes.position.needsUpdate = true;
+
+                // Spawn obstacle traffic cars
+                obstacleSpawnTimer += gameSpeed;
+                if (obstacleSpawnTimer > (isTurboActive ? 28 : 45)) {
+                    spawnObstacleCar();
+                    obstacleSpawnTimer = 0;
+                }
+
+                // Obstacle movement and collision detection
+                for (let i = obstacles.length - 1; i >= 0; i--) {
+                    const obs = obstacles[i];
+                    
+                    if (obs.isOncoming) {
+                        // Oncoming traffic comes towards player faster! Relative speed = gameSpeed + obs.speed
+                        obs.mesh.position.z += (gameSpeed + obs.speed);
+                    } else {
+                        // Same direction traffic moves forward ahead of player
+                        obs.mesh.position.z += (gameSpeed - obs.speed * 0.35);
+                    }
+
+                    const dx = Math.abs(playerCar.position.x - obs.mesh.position.x);
+                    const dz = Math.abs(playerCar.position.z - obs.mesh.position.z);
+
+                    if (dx < 1.5 && dz < 3.0) {
+                        triggerGameOver();
+                    }
+
+                    // Remove out of bounds obstacles
+                    if (obs.mesh.position.z > 15 || obs.mesh.position.z < -300) {
+                        scene.remove(obs.mesh);
+                        obstacles.splice(i, 1);
+                    }
+                }
+
+                // Smooth camera follow
+                camera.position.x += (playerCurrentX * 0.18 - camera.position.x) * 0.05;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.onload = function() {
+            initThree();
+            animate();
+        };
+    </script>
+</body>
+</html>
